@@ -1,2 +1,2 @@
 # entrance-guard
-A websocket php server based on Workerman.
+A websocket php server based on WorkerMan.
