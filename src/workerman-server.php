@@ -10,17 +10,37 @@ require_once '/opt/Workerman/Autoloader.php';
 // 引入进程通信组件，请按照真实环境修改此路径，文件来自(https://github.com/walkor/Channel.git)
 require_once '/opt/Channel/src/Server.php';
 require_once '/opt/Channel/src/Client.php';
+// 引入composer的自动加载，以便加载log4php等第三方日志工具
+require 'vendor/autoload.php';
 
-/*
-include('Logger.php');
-Logger::configure('log4php_config.php');
-$logger = Logger::getLogger("default");
-*/
+// 正式环境端口
+$port_prd = array(
+    "channel"=>18005,
+    "websocket"=>18015,
+    "http"=>18010
+);
+// 测试环境端口
+$port_dev = array(
+    "channel"=>28005,
+    "websocket"=>28015,
+    "http"=>28010
+);
+
+// 客户端主动消息转发接口
+$main_server_message_url  = "http://test.17ltao.cn/mapi/index.php?r_type=2&ctl=Bbs&act=message";
+// 客户端响应消息转发接口，需附上signal_id
+$main_server_callback_url = "http://test.17ltao.cn/mapi/index.php?r_type=2&ctl=Bbs&act=callback";
+
+\Logger::configure(__DIR__ . '/util/log4php-config.php');
+$log = \Logger::getLogger('daily');
+
+echo "[init] starting Logger\n";
+$log->info( "[init] Logger started" );
 
 // 初始化一个Channel服务端
-$channel_server = new Channel\Server('0.0.0.0', 18005);
+$channel_server = new Channel\Server('0.0.0.0', $port_prd["channel"]);
 // 新建websocket监听器
-$ws_worker = new Worker("websocket://0.0.0.0:18015");
+$ws_worker = new Worker("websocket://0.0.0.0:".$port_prd["websocket"]);
 // 1个进程
 $ws_worker->count = 1;
 // 新增加一个属性，用来保存deviceid到connection的映射(deviceid是客户端唯一标识)
@@ -28,25 +48,25 @@ $ws_worker->deviceid_connections = array();
 // 向所有客户端推送数据
 function ws_broadcast($json_data)
 {
-    global $ws_worker;
+    global $ws_worker,$log;
     foreach($ws_worker->deviceid_connections as $connection)
     {
          $connection->send($json_data);
     }
     // 响应日志
-    echo "[Broadcast] " . $json_data . "\n";
+    $log->info( "[broadcast] " . $json_data );
 };
 // 向deviceid推送数据
 function ws_unicast($json_data,$deviceid,$signal_id)
 {
-    global $ws_worker;
+    global $ws_worker,$log;
     if(!isset($ws_worker->deviceid_connections[$deviceid]))
     {
-        echo "[Warning] deviceid ' . $deviceid . ' not login\n";
+        $log->warn( "[unauthorized] deviceid ' . $deviceid . ' not login" );
         return;
     }
     // 响应日志
-    echo "[Unicast] to deviceid " . $deviceid . " : " . $json_data . "\n";
+    $log->info( "[unicast] to deviceid " . $deviceid . " : " . $json_data );
     $connection = $ws_worker->deviceid_connections[$deviceid];
     // 填入signal_id等回调
     $connection->signal_id = $signal_id;
@@ -56,8 +76,9 @@ function ws_unicast($json_data,$deviceid,$signal_id)
 // 当ws_worker启动时开始订阅主动推送的通道
 $ws_worker->onWorkerStart = function($worker)
 {
+    global $port_prd;
     // 自己作为Channel客户端连接到Channel服务端
-    Channel\Client::connect('127.0.0.1', 18005);
+    Channel\Client::connect('127.0.0.1', $port_prd["channel"]);
     // 订阅广播事件
     $event_broadcast = 'messenger_broadcast';
     // 收到广播事件后向当前进程内所有客户端连接发送广播数据
@@ -79,18 +100,14 @@ $ws_worker->onWorkerStart = function($worker)
 // 根据协议文档，应在此发送adk_signature
 $ws_worker->onConnect = function($connection)
 {
-    global $ws_worker;
+    global $ws_worker,$log;
     $time = time();
-    echo "\n[Event] 1 connection from websocket \n";
+    $log->info( "[connection] from websocket " );
     $ret = '{ "command": "ack_signature", "timestamp": ' . $time . ' }';
-    echo "[Return] " . $ret . "\n";
+    $log->info( "[return] " . $ret );
     $connection->send( $ret );
 };
 
-// 客户端主动消息转发接口
-$main_server_message_url  = "http://test.17ltao.cn/mapi/index.php?r_type=2&ctl=Bbs&act=message";
-// 客户端响应消息转发接口，需附上signal_id
-$main_server_callback_url = "http://test.17ltao.cn/mapi/index.php?r_type=2&ctl=Bbs&act=callback";
 /**
  * PHP发送Json对象数据
  * 
@@ -118,19 +135,19 @@ function main_server_call($url,$jsonStr)
 // 当有websocket协议客户端发来消息时onMessage
 $ws_worker->onMessage = function($connection, $data)
 {
-    global $ws_worker;
+    global $ws_worker,$log;
     global $main_server_message_url;
     global $main_server_callback_url;
     // 打印完整消息
-    // echo "[Testing] data : " . $data . "\n";
+    $log->debug( "[data] data : " . $data );
     // json转字典
     $dict = json_decode($data);
 
     if(!isset($dict->{'command'}))
     {
 	// 简单信息
-	echo "\n[Event] 1 message from websocket\n" ;
-        echo "[Warning] not a legal event. command : unknown. data : " . $data . "\n";
+	$log->info( "[message] from websocket" );
+        $log->warn( "[illegal] event. command : unknown. data : " . $data );
         return;
     }
 
@@ -141,9 +158,9 @@ $ws_worker->onMessage = function($connection, $data)
     switch ($command)
     {
     case 'ack_login' : // 客户端登录
-	echo "\n[Event] 1 message from websocket\n" ;
+	$log->info( "[message] from websocket" );
 	// 打印添加前信息
-	echo "[Login] data : " . $data . "\n";
+	$log->info( "[login] data : " . $data );
         $deviceid = $dict->{'deviceid'};
         // 新连接的客户端，存储deviceid和connection的键值对
         if(!isset($connection->deviceid))
@@ -152,13 +169,13 @@ $ws_worker->onMessage = function($connection, $data)
             $connection->deviceid = $deviceid;
             $ws_worker->deviceid_connections[$connection->deviceid] = $connection;
         }
-        echo "[Logined] deviceid " . $connection->deviceid . " login. transmit to " . $main_server_message_url . "\n";
+        $log->info( "[logined] deviceid " . $connection->deviceid . " login. transmit to " . $main_server_message_url );
         list($ret_code, $ret_content) = main_server_call($main_server_message_url, $data);
         // 访问主服务器日志
-        echo "[Main] server return code : " . $ret_code . " content : " . $ret_content . "\n";
+        $log->info( "[main] server return code : " . $ret_code . " content : " . $ret_content );
         //$ret_login = '{"command":"reply_login", "errcode":0, "errmsg":"ok" }';
         // 响应日志
-        echo "[Return] " . $ret_content . "\n";
+        $log->info( "[return] " . $ret_content );
         // 返回结果给客户端
         $connection->send( $ret_content );
         break;
@@ -170,11 +187,10 @@ $ws_worker->onMessage = function($connection, $data)
 	// 字典转json
 	$data = json_encode($dict);
 	// 打印添加后信息
-        echo "[Alive] deviceid : " . $deviceid . "\n";
+        $log->info( "[alive] deviceid : " . $deviceid );
         list($ret_code, $ret_content) = main_server_call($main_server_message_url, $data);
-        //echo "[Main] server return code : " . $ret_code . " content : " . $ret_content . "\n";
-        //$ret_content = '{ "command": "reply_alive", "errcode": 0, "errmsg": "ok" }';
-        //echo "[Return] " . $ret_content . "\n";
+        $log->debug( "[main] server return code : " . $ret_code . " content : " . $ret_content );
+        $log->debug( "[return] " . $ret_content );
         // 返回结果给客户端
         $connection->send( $ret_content );
         break;
@@ -186,16 +202,15 @@ $ws_worker->onMessage = function($connection, $data)
 	// 字典转json
 	$data = json_encode($dict);
 	// 打印添加后信息
-        echo "[Upload] deviceid : " . $deviceid . "\n";
+        $log->info( "[upload] deviceid : " . $deviceid );
         list($ret_code, $ret_content) = main_server_call($main_server_message_url, $data);
-        //echo "[Main] server return code : " . $ret_code . " content : " . $ret_content . "\n";
-        //$ret_content = '{ "command": "reply_alive", "errcode": 0, "errmsg": "ok" }';
-        //echo "[Return] " . $ret_content . "\n";
+        $log->debug( "[main] server return code : " . $ret_code . " content : " . $ret_content );
+        $log->debug( "[return] " . $ret_content );
         // 返回结果给客户端
         $connection->send( $ret_content );
         break;
     case 'iccard_add_echo' :
-	echo "\n[Event] 1 message from websocket\n" ;
+	$log->info( "[message] from websocket" );
         // 服务端下发IC卡之后客户端回应
         $signal_id = $connection->signal_id;
         $deviceid = $connection->deviceid;
@@ -205,13 +220,13 @@ $ws_worker->onMessage = function($connection, $data)
 	// 字典转json
 	$data = json_encode($dict);
 	// 打印添加后信息
-	echo "[ICCARD_ADD_ECHO] " . $data . "\n";
+	$log->info( "[iccard_add_echo] " . $data );
         list($ret_code, $ret_content) = main_server_call($main_server_callback_url, $data);
         // 访问主服务器日志
-        echo "[Main] server return code : " . $ret_code . " content : " . $ret_content . "\n";
+        $log->info( "[Main] server return code : " . $ret_code . " content : " . $ret_content );
         break;
     case 'iccard_remove_echo' :
-	echo "\n[Event] 1 message from websocket\n" ;
+	$log->info( "[message] from websocket" );
         // 服务端删除IC卡之后客户端回应
         $signal_id = $connection->signal_id;
         $deviceid = $connection->deviceid;
@@ -221,13 +236,13 @@ $ws_worker->onMessage = function($connection, $data)
 	// 字典转json
 	$data = json_encode($dict);
 	// 打印添加后信息
-	echo "[ICCARD_REMOVE_ECHO] " . $data . "\n";
+	$log->info( "[iccard_remove_echo] " . $data );
         list($ret_code, $ret_content) = main_server_call($main_server_callback_url, $data);
         // 访问主服务器日志
-        echo "[Main] server return code : " . $ret_code . " content : " . $ret_content . "\n";
+        $log->info( "[main] server return code : " . $ret_code . " content : " . $ret_content );
         break;
     case 'openlock_echo' :
-	echo "\n[Event] 1 message from websocket\n" ;
+	$log->info( "[message] from websocket" );
         // 服务端强行开门之后客户端回应
         $signal_id = $connection->signal_id;
         $deviceid = $connection->deviceid;
@@ -237,20 +252,20 @@ $ws_worker->onMessage = function($connection, $data)
 	// 字典转json
 	$data = json_encode($dict);
 	// 打印添加后信息
-	echo "[OPENLOCK_ECHO] " . $data . "\n";
+	$log->info( "[openlock_echo] " . $data );
         list($ret_code, $ret_content) = main_server_call($main_server_callback_url, $data);
         // 访问主服务器日志
-        echo "[Main] server return code : " . $ret_code . " content : " . $ret_content . "\n";
+        $log->info( "[main] server return code : " . $ret_code . " content : " . $ret_content );
         break;
     default :
-	echo "\n[Event] 1 message from websocket\n" ;
+	$log->info( "[message] from websocket" );
         // 请求日志
-        echo "[Data] " . $data . "\n";
+        $log->info( "[data] " . $data );
         //$ret_openlock_callback = '{"deviceid":"' . $deviceid . '","status":0,"signal_id":"' . $signal_id . '"}';
         list($ret_code, $ret_content) = main_server_call($main_server_message_url, $data);
-        echo "[Main] server return code : " . $ret_code . " content : " . $ret_content . "\n";
+        $log->info( "[main] server return code : " . $ret_code . " content : " . $ret_content );
         // 响应日志
-        echo "[Return] " . $ret_content . "\n";
+        $log->info( "[return] " . $ret_content );
         // 返回结果
         $connection->send( $ret_content );
         break;
@@ -259,43 +274,45 @@ $ws_worker->onMessage = function($connection, $data)
 // 当有客户端连接断开时
 $ws_worker->onClose = function($connection)
 {
-    global $ws_worker;
+    global $ws_worker,$log;
     if(isset($connection->deviceid))
     {
-        echo "\n[Event] close 1 connection from websocket. deviceid : " . $connection->deviceid . "\n";
+        $log->info( "[close] connection from websocket. deviceid : " . $connection->deviceid );
         // 连接断开时删除映射
         unset($ws_worker->deviceid_connections[$connection->deviceid]);
     }else{
-        echo "\n[Event] close 1 connection from websocket. deviceid : unknown\n";
+        $log->info( "[close] connection from websocket. deviceid : unknown" );
     }
 };
 // 微服务指令接口
-$http_worker = new Worker("http://0.0.0.0:18010");
+$http_worker = new Worker("http://0.0.0.0:".$port_prd["http"]);
 // 1个进程
 $http_worker->count = 1;
 // 当http_worker启动时开始连接消息推送服务器
 $http_worker->onWorkerStart = function()
 {
-    Channel\Client::connect('127.0.0.1', 18005);
+    global $port_prd;
+    Channel\Client::connect('127.0.0.1', $port_prd["channel"]);
 };
 // 当有网页客户端发来消息时触发onMessage
 $http_worker->onMessage = function($connection, $data)
 {
-    echo "\n[Event] 1 message from http\n";
+    global $log;
+    $log->info( "[message] from http" );
     // var_dump($_GET, $_POST);
     $connection->send('ok');
     
     // 按约定必须要有cast
     if(!isset($_GET['cast']))
     {
-        echo "[Warning] not a legal event. cast : unknown\n";
+        $log->warn( "[illegal] event. cast : unknown" );
         return;
     }
     $cast = $_GET['cast'];
     // 按约定必须要有command
     if(!isset($_GET['data']))
     {
-        echo "[Warning] not a legal event. data : unknown\n";
+        $log->warn( "[illegal] event. data : unknown" );
         return;
     }
     $json_data = $_GET['data'];
@@ -307,7 +324,7 @@ $http_worker->onMessage = function($connection, $data)
     case 'broadcast' : // 广播
         $event_name = 'messenger_broadcast';
         http_broadcast($json_data);
-        echo "[Publish] broadcast : " . $json_data . "\n";
+        $log->info( "[publish] broadcast : " . $json_data );
         $event_name = 'messenger_broadcast';
         Channel\Client::publish($event_name, array(
            'json_data'  => $json_data
@@ -316,19 +333,19 @@ $http_worker->onMessage = function($connection, $data)
     case 'unicast' : // 单播
         if(!isset($_GET['deviceid']))
         {
-            echo "[Warning] not a legal unicast. deviceid : unknown\n";
+            $log->warn( "[illegal] unicast. deviceid : unknown" );
             return;
         }
         if(!isset($_GET['signal_id']))
         {
-            echo "[Warning] not a legal unicast. signal_id : unknown\n";
+            $log->warn( "[illegal] unicast. signal_id : unknown" );
             return;
         }
         $event_name = 'messenger_unicast';
         // 只有unicast会设置deviceid和signal_id
         $deviceid = $_GET['deviceid'];
         $signal_id = $_GET['signal_id'];
-        echo "[Publish] unicast to deviceid " . $deviceid . ", data : " . $json_data . " (signal_id:" . $signal_id . ")\n";
+        $log->info( "[publish] unicast to deviceid " . $deviceid . ", data : " . $json_data . " (signal_id:" . $signal_id . ")" );
         $event_name = 'messenger_unicast';
         Channel\Client::publish($event_name, array(
            'deviceid'  => $deviceid,
@@ -337,10 +354,12 @@ $http_worker->onMessage = function($connection, $data)
         ));
         break;
     default :
-        echo "[Warning] not a legal event. cast : " . $cast . ", data : " . $json_data . ", deviceid : " . $deviceid . ", signal_id : " . $signal_id . "\n";
+        $log->warn( "[illegal] event. cast : " . $cast . ", data : " . $json_data . ", deviceid : " . $deviceid . ", signal_id : " . $signal_id );
         return;
     }
 };
+echo "[init] starting Worker\n";
+$log->info( "[init] Worker started" );
 // 运行worker
 Worker::runAll();
 
