@@ -169,7 +169,7 @@ $ws_worker->onMessage = function($connection, $data)
             $connection->deviceid = $deviceid;
             $ws_worker->deviceid_connections[$connection->deviceid] = $connection;
         }
-        $log->info( "[login] connection from websocket. deviceid : " . $connection->deviceid . " login. transmit to main server");
+        $log->info( "[login] connection from websocket. deviceid : " . $connection->deviceid . " #transmit to main server#");
         list($ret_code, $ret_content) = main_server_call($main_server_message_url, $data);
         // 访问主服务器日志
         $log->info( "[main] server return code : " . $ret_code . " content : " . $ret_content );
