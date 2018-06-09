@@ -102,7 +102,7 @@ $ws_worker->onConnect = function($connection)
 {
     global $ws_worker,$log;
     $time = time();
-    $log->info( "[connection] from websocket " );
+    $log->info( "[open] connection from websocket." );
     $ret = '{ "command": "ack_signature", "timestamp": ' . $time . ' }';
     $log->info( "[return] " . $ret );
     $connection->send( $ret );
@@ -139,7 +139,7 @@ $ws_worker->onMessage = function($connection, $data)
     global $main_server_message_url;
     global $main_server_callback_url;
     // 打印完整消息
-    $log->debug( "[data] data : " . $data );
+    $log->debug( "[data] : " . $data );
     // json转字典
     $dict = json_decode($data);
 
@@ -160,7 +160,7 @@ $ws_worker->onMessage = function($connection, $data)
     case 'ack_login' : // 客户端登录
 	$log->info( "[message] from websocket" );
 	// 打印添加前信息
-	$log->info( "[login] data : " . $data );
+	$log->info( "[data] : " . $data );
         $deviceid = $dict->{'deviceid'};
         // 新连接的客户端，存储deviceid和connection的键值对
         if(!isset($connection->deviceid))
@@ -169,7 +169,7 @@ $ws_worker->onMessage = function($connection, $data)
             $connection->deviceid = $deviceid;
             $ws_worker->deviceid_connections[$connection->deviceid] = $connection;
         }
-        $log->info( "[logined] deviceid " . $connection->deviceid . " login. transmit to " . $main_server_message_url );
+        $log->info( "[login] connection from websocket. deviceid : " . $connection->deviceid . " login. transmit to main server");
         list($ret_code, $ret_content) = main_server_call($main_server_message_url, $data);
         // 访问主服务器日志
         $log->info( "[main] server return code : " . $ret_code . " content : " . $ret_content );
@@ -260,7 +260,7 @@ $ws_worker->onMessage = function($connection, $data)
     default :
 	$log->info( "[message] from websocket" );
         // 请求日志
-        $log->info( "[data] " . $data );
+        $log->info( "[data] : " . $data );
         //$ret_openlock_callback = '{"deviceid":"' . $deviceid . '","status":0,"signal_id":"' . $signal_id . '"}';
         list($ret_code, $ret_content) = main_server_call($main_server_message_url, $data);
         $log->info( "[main] server return code : " . $ret_code . " content : " . $ret_content );
