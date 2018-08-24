@@ -146,7 +146,7 @@ $ws_worker->onMessage = function($connection, $data)
     if(!isset($dict->{'command'}))
     {
 	// 简单信息
-	$log->info( "[message] from websocket" );
+	$log->info( "[MESSAGE] from websocket" );
         $log->warn( "[illegal] event. command : unknown. data : " . $data );
         return;
     }
@@ -158,7 +158,7 @@ $ws_worker->onMessage = function($connection, $data)
     switch ($command)
     {
     case 'ack_login' : // 客户端登录
-	$log->info( "[message] from websocket" );
+	$log->info( "[MESSAGE] from websocket" );
 	// 打印添加前信息
 	$log->info( "[data] : " . $data );
         $deviceid = $dict->{'deviceid'};
@@ -169,7 +169,7 @@ $ws_worker->onMessage = function($connection, $data)
             $connection->deviceid = $deviceid;
             $ws_worker->deviceid_connections[$connection->deviceid] = $connection;
         }
-        $log->info( "[login] connection from websocket. deviceid : " . $connection->deviceid . " #transmit to main server#");
+        $log->info( "[login] connection from websocket. deviceid : " . $connection->deviceid );
         list($ret_code, $ret_content) = main_server_call($main_server_message_url, $data);
         // 访问主服务器日志
         $log->info( "[main] server return code : " . $ret_code . " content : " . $ret_content );
@@ -210,7 +210,7 @@ $ws_worker->onMessage = function($connection, $data)
         $connection->send( $ret_content );
         break;
     case 'iccard_add_echo' :
-	$log->info( "[message] from websocket" );
+	$log->info( "[MESSAGE] from websocket" );
         // 服务端下发IC卡之后客户端回应
         $signal_id = $connection->signal_id;
         $deviceid = $connection->deviceid;
@@ -226,7 +226,7 @@ $ws_worker->onMessage = function($connection, $data)
         $log->info( "[Main] server return code : " . $ret_code . " content : " . $ret_content );
         break;
     case 'iccard_remove_echo' :
-	$log->info( "[message] from websocket" );
+	$log->info( "[MESSAGE] from websocket" );
         // 服务端删除IC卡之后客户端回应
         $signal_id = $connection->signal_id;
         $deviceid = $connection->deviceid;
@@ -242,7 +242,7 @@ $ws_worker->onMessage = function($connection, $data)
         $log->info( "[main] server return code : " . $ret_code . " content : " . $ret_content );
         break;
     case 'openlock_echo' :
-	$log->info( "[message] from websocket" );
+	$log->info( "[MESSAGE] from websocket" );
         // 服务端强行开门之后客户端回应
         $signal_id = $connection->signal_id;
         $deviceid = $connection->deviceid;
@@ -258,7 +258,7 @@ $ws_worker->onMessage = function($connection, $data)
         $log->info( "[main] server return code : " . $ret_code . " content : " . $ret_content );
         break;
     default :
-	$log->info( "[message] from websocket" );
+	$log->info( "[MESSAGE] from websocket" );
         // 请求日志
         $log->info( "[data] : " . $data );
         //$ret_openlock_callback = '{"deviceid":"' . $deviceid . '","status":0,"signal_id":"' . $signal_id . '"}';
@@ -298,7 +298,7 @@ $http_worker->onWorkerStart = function()
 $http_worker->onMessage = function($connection, $data)
 {
     global $log;
-    $log->info( "[message] from http" );
+    $log->info( "[MESSAGE] from http" );
     // var_dump($_GET, $_POST);
     $connection->send('ok');
     
