@@ -1,0 +1,20 @@
+0 1 * * * sh /opt/entrance-guard/bin/statistics.sh
+
+0 2 * * * find /opt/entrance-guard/log/ -mtime +7 -name "*.log*" -exec rm -rf {} \;
+
+#
+# 分 时 日 月 星期 指令
+#
+# 分钟 1～59
+# 小时 1～23（0表示子夜）
+# 日   1～31
+# 月   1～12
+# 星期 0～6 （0表示星期天）
+#
+# tips: 如果同时设定'日期'和'星期'那么两者间是'或'的关系
+#
+# 举例：
+# */10 9-17/2 5 * 1-5 echo 'i love coding'
+# 工作日(周一至周五)以及每个月的5号，朝九晚五之间，奇数小时内，每10分钟打印一次'i love coding'
+#
+
